@@ -1,0 +1,9 @@
+node_modules
+.next
+.git
+.claude
+tools/.extracted
+index.html
+*.md
+.env
+.env.local
