@@ -1,0 +1,85 @@
+# 준공 이관검사 시스템 — docker compose / podman compose 공용
+#
+#   docker compose up -d --build      또는      podman compose up -d --build
+#
+# 기동 순서: db(healthy) → migrate(마이그레이션+시드, 1회성) → app
+name: transfer-inspection
+
+services:
+  db:
+    image: docker.io/library/mysql:8.4
+    container_name: ti-db
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-inspection}
+      MYSQL_USER: ${MYSQL_USER:-inspection}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-inspection}
+      TZ: Asia/Seoul
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+    ports:
+      - '${MYSQL_PORT:-3306}:3306'
+    volumes:
+      - db-data:/var/lib/mysql
+      # 최초 기동 시 1회 실행: 스키마 + 샘플 더미데이터 (docker/initdb/01-init.sql)
+      - ./docker/initdb:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test:
+        [
+          'CMD-SHELL',
+          'mysqladmin ping -h 127.0.0.1 -u root -p"$$MYSQL_ROOT_PASSWORD" --silent',
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+
+  # 스키마 반영 + 시드. 완료되면 컨테이너가 종료된다.
+  migrate:
+    build:
+      context: .
+      target: migrator
+    image: transfer-inspection-migrate:latest
+    container_name: ti-migrate
+    restart: 'no'
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: mysql://${MYSQL_USER:-inspection}:${MYSQL_PASSWORD:-inspection}@db:3306/${MYSQL_DATABASE:-inspection}
+      SEED_PASSWORD: ${SEED_PASSWORD:-1234}
+      # init SQL 이 이미 데이터를 넣었으면 시드를 건너뛴다.
+      # (기존 볼륨처럼 비어 있는 DB 라면 그대로 시드가 돈다)
+      SEED_ONLY_IF_EMPTY: '1'
+
+  app:
+    build:
+      context: .
+      target: runner
+      args:
+        NEXT_PUBLIC_NAVER_MAP_CLIENT_ID: ${NEXT_PUBLIC_NAVER_MAP_CLIENT_ID:-}
+        NEXT_PUBLIC_NAVER_MAP_KEY_PARAM: ${NEXT_PUBLIC_NAVER_MAP_KEY_PARAM:-ncpKeyId}
+        NEXT_PUBLIC_DEMO_TODAY: ${NEXT_PUBLIC_DEMO_TODAY:-2026.07.26}
+    image: transfer-inspection-app:latest
+    container_name: ti-app
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      DATABASE_URL: mysql://${MYSQL_USER:-inspection}:${MYSQL_PASSWORD:-inspection}@db:3306/${MYSQL_DATABASE:-inspection}
+      AUTH_SECRET: ${AUTH_SECRET:-change-me-please-32-chars-minimum-secret}
+      NEXT_PUBLIC_DEMO_TODAY: ${NEXT_PUBLIC_DEMO_TODAY:-2026.07.26}
+      # 지도 — 비어 있으면 OpenStreetMap 을 쓴다
+      NAVER_MAP_CLIENT_ID: ${NAVER_MAP_CLIENT_ID:-}
+      NAVER_MAP_CLIENT_SECRET: ${NAVER_MAP_CLIENT_SECRET:-}
+      TZ: Asia/Seoul
+    ports:
+      - '${APP_PORT:-3000}:3000'
+
+volumes:
+  db-data:
