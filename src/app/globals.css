@@ -1,0 +1,212 @@
+
+*{box-sizing:border-box}
+.leaflet-container{font-family:'Noto Sans KR',system-ui,sans-serif}
+body{margin:0;background:#eef0f3;font-family:'Noto Sans KR',system-ui,sans-serif;color:#1a1d21;-webkit-font-smoothing:antialiased}
+a{color:#1f5fd0;text-decoration:none}a:hover{color:#164a9f}
+input,select,textarea,button{font-family:'Noto Sans KR',system-ui,sans-serif}
+::-webkit-scrollbar{width:10px;height:10px}::-webkit-scrollbar-thumb{background:#cdd3da;border-radius:6px}::-webkit-scrollbar-track{background:transparent}
+
+/* ══════════════ 모바일 · 태블릿 반응형 레이어 ══════════════
+   앱 마크업이 전부 인라인 스타일이라, 인라인으로 선언된 레이아웃
+   속성을 덮어쓰는 규칙에는 !important 가 필요하다. */
+
+.ti-navtoggle{display:none}
+.ti-navscrim{display:none}
+@supports (height:100dvh){.ti-shell{height:100dvh !important}}
+
+/* nowrap 배지·태그가 1fr 트랙의 min-content 를 밀어내 넘치는 것을 막는다 */
+.ti-tl{grid-template-columns:13px minmax(0,1fr) !important}
+.ti-visit-right{min-width:0}
+
+/* ── ≤1180px : 데스크톱 고정폭 해제 ── */
+@media (max-width:1180px){
+  .ti-auth,.ti-shell{min-width:0 !important}
+  .ti-g6,.ti-g5{grid-template-columns:repeat(3,minmax(0,1fr)) !important}
+}
+
+/* ── ≤1024px : 2단 상세 레이아웃 접기 ── */
+@media (max-width:1024px){
+  .ti-detail{grid-template-columns:minmax(0,1fr) !important}
+  .ti-judgepanel{position:static !important}
+  .ti-g4,.ti-ginfo{grid-template-columns:repeat(3,minmax(0,1fr)) !important}
+  .ti-auth{grid-template-columns:minmax(0,1fr) 392px !important}
+  .ti-auth-panel{padding:0 34px !important}
+}
+
+/* ── ≤900px : 사이드바를 오프캔버스 드로어로 ── */
+@media (max-width:900px){
+  .ti-shell{grid-template-columns:minmax(0,1fr) !important}
+
+  .ti-navtoggle{
+    display:flex;align-items:center;justify-content:center;
+    width:34px;height:34px;flex:none;padding:0;
+    background:#22282f;border:1px solid #2c333b;border-radius:6px;cursor:pointer
+  }
+  .ti-navtoggle span,
+  .ti-navtoggle span::before,
+  .ti-navtoggle span::after{
+    display:block;width:15px;height:1.5px;background:#c4ccd6;border-radius:1px
+  }
+  .ti-navtoggle span{position:relative}
+  .ti-navtoggle span::before,.ti-navtoggle span::after{content:'';position:absolute;left:0}
+  .ti-navtoggle span::before{top:-5px}
+  .ti-navtoggle span::after{top:5px}
+
+  .ti-sidebar{
+    position:fixed !important;top:52px;left:0;bottom:0;width:252px;z-index:50;
+    transform:translateX(-101%);transition:transform .22s ease;
+    box-shadow:6px 0 24px rgba(20,24,29,.18)
+  }
+  .ti-sidebar.ti-open{transform:none}
+  .ti-navscrim.ti-open{
+    display:block;position:fixed;top:52px;left:0;right:0;bottom:0;z-index:45;
+    padding:0;border:0;background:rgba(20,24,29,.34)
+  }
+
+  /* 상단바는 우선순위 낮은 요소부터 덜어낸다 */
+  .ti-user-org{display:none !important}
+  .ti-topbar{gap:10px !important;padding:0 12px !important}
+  .ti-roletabs{margin-left:0 !important}
+  .ti-user{padding-left:10px !important;gap:7px !important}
+}
+
+/* ── ≤720px : 단일 컬럼 모바일 ── */
+@media (max-width:720px){
+  /* 로그인 · 회원가입 */
+  .ti-auth{
+    grid-template-columns:minmax(0,1fr) !important;
+    height:auto !important;min-height:100dvh;overflow:visible !important
+  }
+  .ti-auth-hero{padding:26px 20px 22px !important}
+  .ti-auth-hero-foot{max-width:none !important}
+  .ti-auth-stats{gap:10px !important}
+  .ti-auth-panel{
+    border-left:0 !important;border-top:1px solid #dfe3e8;
+    padding:0 20px !important;justify-content:flex-start !important;overflow:visible !important
+  }
+
+  /* 상단바를 더 압축 */
+  .ti-user-meta,.ti-user-g{display:none !important}
+  .ti-logout{margin-left:0 !important}
+
+  /* 본문 그리드 */
+  .ti-g2,.ti-g2card,.ti-g3a,.ti-g3b,.ti-g4,.ti-g5,.ti-g6{
+    grid-template-columns:minmax(0,1fr) !important
+  }
+  /* 라벨·값 쌍은 좁은 화면에서도 2열이 읽기 편하다 */
+  .ti-kpi,.ti-ginfo{grid-template-columns:repeat(2,minmax(0,1fr)) !important}
+  .ti-cardhead{flex-wrap:wrap !important}
+  .ti-cardnote{display:none !important}
+  .ti-metarow{flex-wrap:wrap !important}
+  .ti-metarow>span:nth-child(2){display:none}        /* 구분선 */
+  .ti-metarow>span:last-child{white-space:nowrap}
+  .ti-visit{grid-template-columns:minmax(0,1fr) !important;gap:18px !important;padding:16px 14px 18px !important}
+  .ti-visit-right{
+    padding-left:0 !important;border-left:0 !important;
+    padding-top:16px;border-top:1px solid #eceff2
+  }
+  .ti-page{padding:16px 14px 40px !important;gap:14px !important}
+  .ti-pagehead{flex-wrap:wrap;align-items:flex-start !important;gap:10px !important}
+  .ti-pagehead>button{width:100%}
+  .ti-log3{grid-template-columns:minmax(0,1fr) !important;gap:2px !important}
+
+  /* 폼 크롬 */
+  .ti-stepbar,.ti-filterbar,.ti-formfoot{flex-wrap:wrap !important}
+  .ti-formfoot{gap:8px !important}
+  .ti-formfoot>span{order:-1;flex-basis:100%}   /* 안내 문구를 버튼 줄 위로 */
+  .ti-search{max-width:none !important;min-width:150px}
+  .ti-locrow{flex-direction:column !important;align-items:stretch !important}
+  .ti-locrow>button{align-self:stretch !important}
+
+  /* 오버레이 */
+  .ti-drawer{width:calc(100% - 44px) !important}
+  .ti-modal-wrap{align-items:flex-end !important;padding:0}
+  .ti-modal-sm,.ti-modal-lg{
+    width:100% !important;max-width:none !important;
+    border-bottom-left-radius:0 !important;border-bottom-right-radius:0 !important
+  }
+  .ti-modal-lg{max-height:92dvh}
+  .ti-modal-lg button,.ti-modal-lg a{white-space:nowrap;flex:none}
+  .ti-mapsearch{flex-wrap:wrap !important}
+  .ti-mapsearch>input{flex:1 1 100% !important}
+  .ti-mapfoot{flex-wrap:wrap !important;gap:10px 14px !important}
+  .ti-mapfoot>button{width:100%}
+  .ti-map{height:min(46dvh,320px) !important}
+  .ti-toast{left:12px !important;right:12px !important;bottom:12px !important;max-width:none !important}
+
+  /* 표: 우선순위 낮은 열을 숨기고 나머지는 가로 스크롤 */
+  .ti-tablewrap{-webkit-overflow-scrolling:touch}
+  .ti-table-my{min-width:560px !important}
+  .ti-table-my tr>:nth-child(4),
+  .ti-table-my tr>:nth-child(5),
+  .ti-table-my tr>:nth-child(9){display:none}
+  .ti-table-sup{min-width:600px !important}
+  .ti-table-sup tr>:nth-child(3),
+  .ti-table-sup tr>:nth-child(5),
+  .ti-table-sup tr>:nth-child(6),
+  .ti-table-sup tr>:nth-child(7),
+  .ti-table-sup tr>:nth-child(8){display:none}
+
+  /* 캘린더는 7열을 유지한 채 가로 스크롤 */
+  .ti-calscroll{overflow-x:auto;-webkit-overflow-scrolling:touch;margin:0 -14px;padding:0 14px}
+  .ti-cal{min-width:620px}
+
+  /* iOS 에서 입력 포커스 시 자동 확대되지 않도록 */
+  input:not([type=checkbox]):not([type=radio]),select,textarea{font-size:16px !important}
+}
+
+/* ── ≤560px : 소형 단말 ── */
+@media (max-width:560px){
+  /* 예전엔 좁은 화면에서 제목을 숨겨 자리를 벌었지만, 이제 제목이 유일한 홈 링크라
+     지울 수 없다. 대신 줄이고 넘치면 말줄임 — 상단바가 가로로 밀리는 것만 막는다. */
+  .ti-brand-title{font-size:12.5px !important}
+  .ti-roletabs button{padding:5px 9px !important;font-size:11.5px !important}
+  .ti-kpi{grid-template-columns:repeat(2,minmax(0,1fr)) !important}
+  .ti-auth-stats{grid-template-columns:minmax(0,1fr) !important}
+  .ti-drawer{width:100% !important;border-left:0 !important}
+}
+
+/* ── 감독관: KPI 목록 모달 · 이번주 방문 일정 ── */
+@media (max-width:720px){
+  .ti-kpirow{grid-template-columns:minmax(0,1fr) !important;gap:7px !important;padding:12px 14px !important}
+  .ti-kpirow>span:last-child{justify-self:stretch !important;text-align:center}
+  .ti-kpirow-st{flex-direction:row !important;align-items:center !important;gap:8px !important}
+  .ti-week{padding:12px 14px 14px !important}
+}
+
+/* ══════════════ hover · focus 유틸 ══════════════
+   프로토타입의 style-hover 속성을 클래스로 옮긴 것. 인라인 스타일과 함께 쓴다. */
+.h-blue:hover{background:#1a52b6 !important}
+.h-green:hover{background:#1a6839 !important}
+.h-teal:hover{background:#0c6759 !important}
+.h-purple:hover{background:#4d3ab0 !important}
+.h-f8:hover{background:#f8fafc}
+.h-f7:hover{background:#f7f9fc}
+.h-f2:hover{background:#f2f2f2}
+.h-ef:hover{background:#eff2f6}
+.h-ee:hover{background:#eef1f5}
+.h-f4:hover{background:#f4f8ff}
+.h-bd:hover{border-color:#a9b2bd}
+.h-bdblue:hover{border-color:#1f5fd0}
+.h-bdbluefg:hover{border-color:#1f5fd0;color:#1f5fd0}
+.h-dark:hover{border-color:#4a5460;color:#dfe4ea}
+/* 브랜드 = 홈 링크. 어두운 상단바 위라 색 대신 밝기로 눌리는 느낌만 준다 */
+.h-brand{border-radius:4px;padding:3px 5px;margin-left:-5px;transition:background .14s ease;min-width:0;flex:0 1 auto}
+.ti-brand-title{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.h-brand:hover{background:#22282f}
+.h-brand:focus-visible{outline:2px solid #4d8bf0;outline-offset:1px}
+.ti-field:focus{border-color:#1f5fd0;box-shadow:0 0 0 2px #e6eefb}
+.ti-search input:focus{border-color:#1f5fd0;box-shadow:0 0 0 2px #f0f6ff}
+button{font-family:inherit}
+button:disabled{cursor:not-allowed !important;opacity:.55}
+/* 카드형 버튼 hover — 테두리 + 포커스 링 (KPI 카드 · 제품 선택 · 방문 일정 카드) */
+.h-ring:hover{border-color:#1f5fd0;box-shadow:0 0 0 2px #e6eefb}
+.h-ring-soft:hover{border-color:#1f5fd0;box-shadow:0 0 0 2px #f0f6ff}
+/* 입력 오류 상태 — 포커스 링도 붉게 */
+.ti-field-bad{border-color:#e3a9a3 !important}
+.ti-field-bad:focus{border-color:#a32b25 !important;box-shadow:0 0 0 2px #fbe3e0 !important}
+/* 날짜·월 선택기 아이콘을 브랜드 색과 맞춘다 */
+input[type=date]::-webkit-calendar-picker-indicator,
+input[type=month]::-webkit-calendar-picker-indicator{opacity:.55;cursor:pointer}
+input[type=date]:hover::-webkit-calendar-picker-indicator,
+input[type=month]:hover::-webkit-calendar-picker-indicator{opacity:.9}

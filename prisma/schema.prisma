@@ -1,0 +1,219 @@
+// 준공 이관검사 시스템 — MySQL 스키마
+//
+// 화면에서 쓰는 어휘는 한글(신청완료 · 검토승인 …)이지만 DB 에는 ASCII enum 으로
+// 저장한다. 변환표는 src/lib/domain.ts 에 있고, API 경계에서 라벨로 되돌린다.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  APPLICANT
+  SUPERVISOR
+}
+
+enum Product {
+  DDL
+  HN
+}
+
+enum Channel {
+  DIRECT
+  DISTRIBUTION
+}
+
+enum Status {
+  DRAFT
+  SUBMITTED
+  REVIEW_PLANNED
+  REVIEW_APPROVED
+  FIX_REQUESTED
+  FINAL_PENDING
+  PASSED
+  CONDITIONAL
+  FAILED
+  HOLD
+  CARRIED_OVER
+}
+
+enum Result {
+  PASS
+  CONDITIONAL
+  FAIL
+  HOLD
+  CARRY_OVER
+}
+
+enum InspectType {
+  DOCUMENT
+  SAMPLING
+}
+
+enum NotifyChannel {
+  MAIL
+  SMS
+}
+
+model User {
+  id        Int      @id @default(autoincrement())
+  email     String   @unique @db.VarChar(190)
+  password  String   @db.VarChar(120)
+  name      String   @db.VarChar(60)
+  phone     String   @default("") @db.VarChar(40)
+  org       String   @db.VarChar(120)
+  role      Role
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  applications Application[] @relation("applicant")
+  inspections  Application[] @relation("inspector")
+
+  @@index([role])
+  @@map("users")
+}
+
+model Application {
+  /// 식별번호 — 화면에 그대로 노출되는 업무 키 (예: 20260701)
+  id String @id @db.VarChar(16)
+
+  product Product
+  /// 사업연도. 신청일 연도와 다를 수 있어 별도 보관한다.
+  year    Int
+  site    String  @db.VarChar(200)
+  owner   String  @db.VarChar(120)
+  pm      String  @db.VarChar(60)
+  channel Channel
+  code    String  @db.VarChar(60)
+  /// 입주개시일 'YYYY.MM'
+  moveIn  String  @db.VarChar(7)
+
+  installer    String  @db.VarChar(120)
+  managerName  String  @db.VarChar(60)
+  managerPhone String  @db.VarChar(40)
+  qty          Int
+  region       String  @db.VarChar(60)
+  zip          String  @db.VarChar(10)
+  addr         String  @default("") @db.VarChar(255)
+  lat          Decimal? @db.Decimal(10, 7)
+  lng          Decimal? @db.Decimal(10, 7)
+
+  // ── 설치점 · 입회 ──
+  installer2   String @default("") @db.VarChar(120)
+  witness      String @default("") @db.VarChar(60)
+  witnessPhone String @default("") @db.VarChar(40)
+  worker1      String @default("") @db.VarChar(60)
+  worker2      String @default("") @db.VarChar(60)
+
+  // ── 검사 요청(신청자 희망) ──
+  desiredDate        DateTime?    @db.Date
+  desiredInspectType InspectType?
+  /// 입주율 · 시공 완료율 (예: "입주율 92% · 시공 100%")
+  occupancy          String       @default("") @db.VarChar(120)
+
+  /// 양식의 나머지 항목 (DDL 41개 / HN 58개 중 위에 없는 것들)
+  extra Json?
+
+  // ── DDL(도어록) 양식 ──
+  link   String @default("") @db.VarChar(40)
+  linked String @default("") @db.VarChar(40)
+  board  String @default("") @db.VarChar(60)
+  strike String @default("") @db.VarChar(40)
+  other  String @default("") @db.VarChar(40)
+  lock1  String @default("") @db.VarChar(60)
+
+  // ── HN/HA(홈네트워크) 양식 ──
+  topology String @default("") @db.VarChar(20)
+  main     String @default("") @db.VarChar(60)
+  dev1     String @default("") @db.VarChar(60)
+  camera   String @default("") @db.VarChar(60)
+  lobby    String @default("") @db.VarChar(60)
+  dongs    Int    @default(0)
+
+  status      Status
+  reqDate     DateTime     @db.Date
+  visitDate   DateTime?    @db.Date
+  inspectType InspectType?
+  firstResult Result?
+  finalResult Result?
+
+  memo         String @default("") @db.VarChar(1000)
+  revComment   String @default("") @db.VarChar(1000)
+  firstComment String @default("") @db.VarChar(1000)
+  finalComment String @default("") @db.VarChar(1000)
+
+  // ── 하자이행증권 ──
+  bondNo   String    @default("") @db.VarChar(80)
+  issuer   String    @default("") @db.VarChar(60)
+  months   Int       @default(36)
+  bondFrom DateTime? @db.Date
+  bondTo   DateTime? @db.Date
+
+  applicantId Int
+  applicant   User @relation("applicant", fields: [applicantId], references: [id])
+
+  inspectorId Int?
+  inspector   User? @relation("inspector", fields: [inspectorId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  logs          ApplicationLog[]
+  notifications Notification[]
+
+  @@index([status])
+  @@index([visitDate])
+  @@index([reqDate])
+  @@index([applicantId])
+  @@index([year, product])
+  @@map("applications")
+}
+
+/// 처리 이력 — 상세 화면의 "처리 로그" 타임라인
+model ApplicationLog {
+  id            Int      @id @default(autoincrement())
+  applicationId String   @db.VarChar(16)
+  at            DateTime @db.Date
+  who           String   @db.VarChar(80)
+  txt           String   @db.VarChar(500)
+  createdAt     DateTime @default(now())
+
+  application Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+
+  @@index([applicationId, id])
+  @@map("application_logs")
+}
+
+/// 발송된 통보 이력 — 이메일 / 문자
+model Notification {
+  id            Int           @id @default(autoincrement())
+  applicationId String        @db.VarChar(16)
+  channel       NotifyChannel
+  txt           String        @db.VarChar(500)
+  at            DateTime      @db.Date
+  createdAt     DateTime      @default(now())
+
+  application Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+
+  @@index([applicationId, id])
+  @@map("notifications")
+}
+
+/// 감독관 동선 참고용 외부(타 신청) 방문 일정
+model ExternalVisit {
+  id        Int      @id @default(autoincrement())
+  date      DateTime @db.Date
+  time      String   @db.VarChar(5)
+  site      String   @db.VarChar(200)
+  region    String   @db.VarChar(60)
+  product   String   @db.VarChar(10)
+  installer String   @db.VarChar(120)
+  manager   String   @db.VarChar(60)
+
+  @@index([date])
+  @@map("external_visits")
+}
