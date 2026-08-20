@@ -37,8 +37,9 @@ export interface FieldProps {
   error?: string;
   /** 입력칸 오른쪽에 붙는 단위 표기 (세대 · 개동 · 개월 …) */
   unit?: string;
-  min?: number;
-  max?: number;
+  /** 숫자는 그대로, 날짜·월은 업무 표기('2026.08.01' · '2026.08')로 준다 */
+  min?: number | string;
+  max?: number | string;
   autoComplete?: string;
   /** 값이 확정될 때(blur) 알려 준다 — 단계 이동 전 검증에 쓴다 */
   onBlur?: () => void;
@@ -82,6 +83,17 @@ export function Field({
   /** 화면에 보여 줄 값 — 날짜·월은 네이티브 선택기 형식으로 바꿔 준다 */
   const shown =
     type === 'date' ? toDateInput(value) : type === 'month' ? toMonthInput(value) : value;
+
+  /**
+   * 네이티브 선택기의 상·하한. 날짜·월은 부모가 업무 표기로 주므로 여기서 바꿔 준다.
+   * (힌트로 '오늘 이후' 라고 적어 두어도 min 이 없으면 달력에서 과거가 그대로 눌린다.)
+   */
+  const bound = (b: number | string | undefined): number | string | undefined => {
+    if (b === undefined || b === '') return undefined;
+    if (type === 'date') return toDateInput(String(b)) || undefined;
+    if (type === 'month') return toMonthInput(String(b)) || undefined;
+    return type === 'number' ? b : undefined;
+  };
 
   /** 입력값을 업무 표기로 되돌리고, 종류에 따라 자동 정리한다 */
   function handle(raw: string) {
@@ -149,8 +161,8 @@ export function Field({
             inputMode={type === 'number' ? 'numeric' : type === 'tel' ? 'tel' : undefined}
             placeholder={ph}
             value={shown}
-            min={type === 'number' ? min : undefined}
-            max={type === 'number' ? max : undefined}
+            min={bound(min)}
+            max={bound(max)}
             autoComplete={autoComplete}
             onChange={(e) => handle(e.target.value)}
             style={box}

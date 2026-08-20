@@ -23,8 +23,11 @@ import {
   stagger,
   staggerItem,
 } from '@/components/motion';
+import { useToast } from '@/components/Toast';
 import { STATUS_NOTE, STATUS_STYLE, type StatusLabel } from '@/lib/domain';
 import type { ItineraryItem, MyVisit, RowBase } from '@/lib/view';
+import { draftFromApplication, readDraft, writeDraft } from '@/components/applicant/draft';
+import { loadForReapplyAction } from '@/components/applicant/reapply';
 
 /** 목록 행 + 필터·툴팁에 쓰는 원래 상태값 (배지 라벨은 표기용이라 키로 못 쓴다) */
 export interface MyRow extends RowBase {
@@ -209,6 +212,20 @@ export function MyVisitCards({ visits }: { visits: MyVisit[] }) {
   );
 }
 
+/** 동선 항목의 현장명 줄 — 열 수 있는 건은 button, 아닌 건은 span 으로 같은 모양을 쓴다 */
+const TL_TITLE: React.CSSProperties = {
+  flex: 1,
+  minWidth: 0,
+  padding: 0,
+  border: 0,
+  background: 'none',
+  textAlign: 'left',
+  font: "500 12.5px/1.4 'Noto Sans KR'",
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  whiteSpace: 'nowrap',
+};
+
 export function PlanTimeline({ items }: { items: ItineraryItem[] }) {
   const router = useRouter();
   return (
@@ -237,28 +254,21 @@ export function PlanTimeline({ items }: { items: ItineraryItem[] }) {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6, paddingBottom: 16 }}>
             <div style={{ display: 'flex', alignItems: 'baseline', gap: 9 }}>
               <span style={{ font: "500 12px/1.2 'Roboto Mono',monospace", color: i.timeColor }}>{i.t}</span>
-              <button
-                onClick={() => {
-                  if (i.showOpen && i.appId) router.push(`/applicant/${i.appId}`);
-                }}
-                style={{
-                  flex: 1,
-                  minWidth: 0,
-                  padding: 0,
-                  border: 0,
-                  background: 'none',
-                  textAlign: 'left',
-                  cursor: i.cursor,
-                  font: "500 12.5px/1.4 'Noto Sans KR'",
-                  color: i.titleColor,
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                  whiteSpace: 'nowrap',
-                }}
-              >
-                {i.site}
-                {i.showOpen ? <span style={{ color: '#98a1ac' }}> ›</span> : null}
-              </button>
+              {/*
+               * 타 신청 건은 열어 볼 권한이 없다. 그래도 button 으로 두면 Tab 포커스를
+               * 받아 놓고 Enter 에 아무 반응이 없어, 키보드로는 막다른 골목이 된다.
+               */}
+              {i.showOpen && i.appId ? (
+                <button
+                  onClick={() => router.push(`/applicant/${i.appId}`)}
+                  style={{ ...TL_TITLE, cursor: i.cursor, color: i.titleColor }}
+                >
+                  {i.site}
+                  <span style={{ color: '#98a1ac' }}> ›</span>
+                </button>
+              ) : (
+                <span style={{ ...TL_TITLE, color: i.titleColor }}>{i.site}</span>
+              )}
               <span
                 style={{
                   padding: '2px 7px',
@@ -455,6 +465,74 @@ function EmptyList() {
   );
 }
 
+/**
+ * 여기서 끝난 건은 기다린다고 풀리지 않는다 — 신청자가 새 건을 올려야 다음이 있다.
+ * (보완요청은 상세 화면의 "보완 후 재신청" 이 같은 건을 되살리므로 여기 넣지 않는다.)
+ */
+const REAPPLY: StatusLabel[] = ['불합격', '이월'];
+
+/**
+ * "이 내용으로 다시 신청" — 지난 건의 값을 마법사 임시저장에 심고 신규 신청으로 보낸다.
+ *
+ * 불합격은 현장·제품 구성이 그대로인 채 재시공만 한 것이라, 빈 폼에서 41~58개 항목을
+ * 다시 치게 두면 그 자체가 재신청을 막는 장벽이 된다. 마법사가 "이어서 작성" 배너로
+ * 받아 주므로, 심어 둔 값이 사용자 확인 없이 폼에 들어가지는 않는다.
+ */
+function ReapplyButton({ row }: { row: MyRow }) {
+  const router = useRouter();
+  const toast = useToast();
+  const [busy, setBusy] = useState(false);
+  /** 쓰다 만 신청서를 말없이 덮어쓰지 않도록 한 번 더 묻는다 */
+  const [asking, setAsking] = useState(false);
+
+  async function go() {
+    if (busy) return;
+    if (!asking && readDraft()) {
+      setAsking(true);
+      toast('작성 중이던 신청서가 있습니다 · 한 번 더 누르면 이 내용으로 바뀝니다');
+      return;
+    }
+    setBusy(true);
+    try {
+      const a = await loadForReapplyAction(row.id);
+      if (!a) {
+        toast('신청 내용을 불러오지 못했습니다 · 새 신청서로 작성해 주세요');
+        return;
+      }
+      writeDraft(draftFromApplication(a));
+      router.push('/applicant/new');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <motion.button
+      {...pressable}
+      onClick={(e) => {
+        e.stopPropagation();
+        void go();
+      }}
+      disabled={busy}
+      className="h-f4"
+      title={`${row.id} 의 입력 내용을 그대로 옮겨 새 신청서를 시작합니다`}
+      style={{
+        marginRight: 10,
+        padding: '3px 9px',
+        background: asking ? '#fbf1e5' : '#fff',
+        color: asking ? '#9a5b12' : '#1a52b6',
+        border: `1px solid ${asking ? '#f0dcc2' : '#cfe0fa'}`,
+        borderRadius: 3,
+        font: "500 11.5px/1.4 'Noto Sans KR'",
+        cursor: busy ? 'default' : 'pointer',
+        whiteSpace: 'nowrap',
+      }}
+    >
+      {busy ? '불러오는 중…' : asking ? '덮어쓰고 작성' : '이 내용으로 다시 신청'}
+    </motion.button>
+  );
+}
+
 const TH: React.CSSProperties = {
   padding: '9px 12px',
   font: "500 11.5px/1.2 'Noto Sans KR'",
@@ -472,7 +550,7 @@ const TD: React.CSSProperties = {
 export function MyTable({ rows }: { rows: MyRow[] }) {
   const router = useRouter();
   return (
-    <div className="ti-tablewrap" style={{ overflowX: 'auto' }}>
+    <div className="ti-tablewrap">
       <table className="ti-table-my" style={{ width: '100%', minWidth: 860, borderCollapse: 'collapse' }}>
         <thead>
           <tr>
@@ -608,7 +686,8 @@ export function MyTable({ rows }: { rows: MyRow[] }) {
               >
                 {r.finalText}
               </td>
-              <td style={{ ...TD, textAlign: 'right' }}>
+              <td style={{ ...TD, textAlign: 'right', whiteSpace: 'nowrap' }}>
+                {REAPPLY.includes(r.status) ? <ReapplyButton row={r} /> : null}
                 <Link
                   href={`/applicant/${r.id}`}
                   onClick={(e) => e.stopPropagation()}

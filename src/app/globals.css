@@ -134,8 +134,11 @@ input,select,textarea,button{font-family:'Noto Sans KR',system-ui,sans-serif}
   .ti-map{height:min(46dvh,320px) !important}
   .ti-toast{left:12px !important;right:12px !important;bottom:12px !important;max-width:none !important}
 
-  /* 표: 우선순위 낮은 열을 숨기고 나머지는 가로 스크롤 */
-  .ti-tablewrap{-webkit-overflow-scrolling:touch}
+  /* 표: 우선순위 낮은 열을 숨기고 나머지는 가로 스크롤.
+     넓은 화면에서는 이 규칙을 주지 않는다 — overflow-x:auto 를 주면 래퍼가
+     스크롤 컨테이너가 되어 thead 의 position:sticky 기준을 가로채고,
+     실제 세로 스크롤은 .ti-content 에서 일어나므로 헤더가 그냥 밀려 사라진다. */
+  .ti-tablewrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
   .ti-table-my{min-width:560px !important}
   .ti-table-my tr>:nth-child(4),
   .ti-table-my tr>:nth-child(5),

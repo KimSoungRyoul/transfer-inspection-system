@@ -24,6 +24,7 @@ import {
   type ExternalVisitDTO,
   type ResultLabel,
 } from '@/lib/domain';
+import { addDays, dowOf } from '@/lib/date';
 import { euro, fromDateInput, isBefore, toDateInput, validate } from '@/lib/form';
 import { buildDetail, chip, resultChip } from '@/lib/view';
 import { useToast } from '@/components/Toast';
@@ -41,11 +42,29 @@ import {
 export type DrawerMode = 'review' | 'judge' | 'result';
 
 /** 프로토타입의 빠른 선택 칩 — 감독관이 자주 쓰는 방문일 (업무 표기) */
-const QUICK_DATES: [string, string][] = [
-  ['2026.07.29', '7/29 (수)'],
-  ['2026.07.31', '7/31 (금)'],
-  ['2026.08.05', '8/5 (수)'],
-];
+/**
+ * 방문예정일 빠른 선택 — 오늘 기준으로 계산한다.
+ * 날짜를 박아 두면 데모 기준일(NEXT_PUBLIC_DEMO_TODAY)을 해제하는 순간
+ * 과거 날짜가 기본값으로 남는다.
+ * 주말은 건너뛴다 — 현장 방문은 평일에만 잡는다.
+ */
+function nextWeekday(from: string, n: number): string {
+  let d = from;
+  let left = n;
+  while (left > 0) {
+    d = addDays(d, 1);
+    if (dowOf(d) !== '토' && dowOf(d) !== '일') left -= 1;
+  }
+  return d;
+}
+
+function quickDates(base: string): [string, string][] {
+  return [3, 5, 10].map((n) => {
+    const v = nextWeekday(base, n);
+    const [, m, day] = v.split('.');
+    return [v, `${Number(m)}/${Number(day)} (${dowOf(v)})`] as [string, string];
+  });
+}
 
 /** 코멘트 최대 길이 — 넘으면 입력을 막고 글자 수를 붉게 표시한다 */
 const MAX_COMMENT = 500;
@@ -248,8 +267,8 @@ export function ProcessDrawer({
   const toast = useToast();
   const sel = useMemo(() => buildDetail(app, apps, external), [app, apps, external]);
 
-  /* openProcess 의 초기값 — 기존 값이 있으면 그대로, 없으면 프로토타입 기본값 */
-  const [visitInput, setVisitInput] = useState(app.visitDate || '2026.07.31');
+  /* 기존 값이 있으면 그대로, 없으면 오늘 기준 다음 영업일 몇 개 중 첫 번째 */
+  const [visitInput, setVisitInput] = useState(app.visitDate || nextWeekday(today(), 3));
   const [inspectType, setInspectType] = useState<string>(app.inspectType || '');
   const [revComment, setRevComment] = useState(app.revComment || '');
   const [firstResult, setFirstResult] = useState<string>(app.first || '');
@@ -286,6 +305,8 @@ export function ProcessDrawer({
       ?.querySelector<HTMLElement>('button,input,textarea,select,[href]')
       ?.focus();
   }, []);
+
+  const quickPicks = quickDates(today());
 
   const itype = inspectType || '샘플링검사';
   const isRevMode = mode === 'review';
@@ -370,8 +391,14 @@ export function ProcessDrawer({
       }),
     );
 
+  /*
+   * 반려 사유는 지금 열려 있는 모드에서 감독관이 실제로 쓴 칸을 보낸다.
+   * 판정 모드에는 revComment 입력란이 없는데도 state 초기값(app.revComment)이
+   * 우선해서, 검토승인 때 적어 둔 방문 안내문이 반려 사유로 나가고
+   * 방금 쓴 사유는 유실됐다.
+   */
   const sendFix = () =>
-    run(() => requestFixAction({ id: app.id, comment: revComment || judgeComment }));
+    run(() => requestFixAction({ id: app.id, comment: isRevMode ? revComment : judgeComment }));
 
   const saveFirst = () =>
     run(() =>
@@ -518,6 +545,32 @@ export function ProcessDrawer({
                 exit="exit"
                 style={{ display: 'flex', flexDirection: 'column', gap: 18 }}
               >
+                {/*
+                  검토 단계에서도 증권 상태를 알려 준다. 여기서 모르면 방문을
+                  다녀온 뒤 판정 화면에서야 "합격 처리할 수 없습니다" 를 만난다.
+                  헛걸음을 막으려면 승인 전에 보여야 한다.
+                */}
+                {bondMissing ? (
+                  <div
+                    style={{
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: 4,
+                      padding: '10px 12px',
+                      borderRadius: 5,
+                      ...warnBoxStyle,
+                    }}
+                  >
+                    <span style={{ font: "500 11.5px/1.3 'Noto Sans KR'", color: '#9a5b12' }}>
+                      하자이행증권 미발행
+                    </span>
+                    <span style={warnTextStyle}>
+                      이대로 방문해도 합격 처리할 수 없습니다 · 증권 발행을 먼저 요청하거나
+                      보완요청으로 반려하세요
+                    </span>
+                  </div>
+                ) : null}
+
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
                   {/* 방문일을 잡을 때 가장 먼저 봐야 할 값 — 신청자가 적어 낸 희망 조건 */}
                   {hasWish ? (
@@ -576,7 +629,7 @@ export function ProcessDrawer({
                   />
                   {visitErr ? <span style={errStyle}>{visitErr}</span> : null}
                   <div style={{ display: 'flex', gap: 6 }}>
-                    {QUICK_DATES.map(([value, label]) => (
+                    {quickPicks.map(([value, label]) => (
                       <motion.button
                         key={value}
                         onClick={() => setVisitInput(value)}

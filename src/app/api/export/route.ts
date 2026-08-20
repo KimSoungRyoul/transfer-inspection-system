@@ -63,7 +63,15 @@ export async function GET(req: Request) {
         : x.status === fStatus,
     );
   }
-  if (q) apps = apps.filter((x) => (x.site + x.owner + x.code).toLowerCase().includes(q));
+  // 목록 화면(ListClient)과 같은 필드를 봐야 한다. 화면은 식별번호·지역·설치점까지
+  // 검색하는데 여기만 3개 필드를 보면, 화면에 13건이 떠도 CSV 는 0행이 된다.
+  if (q) {
+    apps = apps.filter((x) =>
+      (x.id + x.site + x.owner + x.code + x.region + x.installer + x.manager + x.pm)
+        .toLowerCase()
+        .includes(q),
+    );
+  }
 
   const head = COLUMNS.map(([k]) => cell(k)).join(',');
   const body = apps.map((a) => COLUMNS.map(([, f]) => cell(f(a))).join(',')).join('\r\n');

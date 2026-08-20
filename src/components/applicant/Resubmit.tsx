@@ -340,7 +340,8 @@ export function FixPanel({ app, revComment }: { app: ApplicationDTO; revComment:
 
         <div className="ti-formfoot" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <span style={{ font: "400 11.5px/1.2 'Noto Sans KR'", color: '#8b95a1' }}>
-            보완 내용을 저장한 뒤 재신청하면 감독관에게 검토 요청이 다시 발송됩니다
+            {/* '저장한 뒤 재신청' 이라 2단계로 읽혔지만, 재신청 버튼 하나가 저장까지 함께 한다 */}
+            재신청하면 입력한 보완 내용이 함께 저장되고 감독관에게 검토 요청이 다시 발송됩니다
           </span>
           <div style={{ flex: 1 }} />
           <motion.button

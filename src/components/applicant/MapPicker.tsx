@@ -39,6 +39,8 @@ export function MapPicker({
   const elRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<MapEngine | null>(null);
   const initialRef = useRef<SiteLoc | null>(initial);
+  /** 배경을 "눌렀다가 뗀" 것인지 — 지도에서 시작한 드래그와 구분한다 */
+  const downOnBackdrop = useRef(false);
 
   const [pin, setPin] = useState<SiteLoc | null>(initial);
   const [query, setQuery] = useState('');
@@ -48,6 +50,19 @@ export function MapPicker({
   useEffect(() => {
     initialRef.current = initial;
   }, [initial]);
+
+  /*
+   * ESC 로 닫기. 모달 안에 지도·검색·링크가 있어 닫기 버튼까지 Tab 으로 가는 길이 멀고,
+   * 지금은 그 버튼 하나만이 유일한 탈출구다.
+   */
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [open, onClose]);
 
   /** 좌표를 찍고 역지오코딩으로 주소를 채운다 */
   const applyPin = useCallback(async (lat: number, lng: number) => {
@@ -142,6 +157,16 @@ export function MapPicker({
           initial="hidden"
           animate="show"
           exit="exit"
+          /*
+           * 마커를 끌다 배경에서 손을 떼면 click 이 배경까지 올라온다. 찍어 둔 위치를
+           * 그렇게 날리면 곤란하므로, 누른 지점과 뗀 지점이 모두 배경일 때만 닫는다.
+           */
+          onMouseDown={(e) => {
+            downOnBackdrop.current = e.target === e.currentTarget;
+          }}
+          onClick={(e) => {
+            if (downOnBackdrop.current && e.target === e.currentTarget) onClose();
+          }}
           style={{
             position: 'fixed',
             inset: 0,
@@ -230,6 +255,12 @@ export function MapPicker({
                 className="ti-field"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
+                /* 검색창에서 Enter 는 검색이다 — 마우스로 버튼까지 가야 할 이유가 없다 */
+                onKeyDown={(e) => {
+                  if (e.key !== 'Enter' || searching) return;
+                  e.preventDefault();
+                  void searchMap();
+                }}
                 placeholder="예: 경기 파주 운정신도시 한빛채 3차"
                 style={{
                   flex: 1,

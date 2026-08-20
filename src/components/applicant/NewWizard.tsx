@@ -33,6 +33,13 @@ import {
   type ProductCode,
 } from '@/lib/domain';
 import { MapPicker, PinGlyph, type SiteLoc } from '@/components/applicant/MapPicker';
+import {
+  clearDraft,
+  readDraft,
+  writeDraft,
+  type Draft,
+  type Vals,
+} from '@/components/applicant/draft';
 
 /* ── 항목 정의 ────────────────────────────────────────────────────── */
 
@@ -52,8 +59,9 @@ interface Fd {
   unit?: string;
   /** 헷갈리는 항목에만 붙이는 짧은 도움말 */
   hint?: string;
-  min?: number;
-  max?: number;
+  /** 숫자는 그대로, 날짜는 업무 표기('2026.08.01') — Field 가 선택기 형식으로 바꾼다 */
+  min?: number | string;
+  max?: number | string;
   autoComplete?: string;
 }
 
@@ -338,6 +346,8 @@ const STEP4: Section[] = [
             ph: '2026.08.10',
             req: true,
             type: 'date',
+            // 힌트만 있고 하한이 없어 달력에서 과거가 그대로 눌렸다
+            min: today(),
             hint: '오늘 이후 날짜만 선택할 수 있습니다',
           },
           { key: 'desiredInspectType', label: '희망 검사종류', opts: ['서류검사', '샘플링검사'] },
@@ -373,9 +383,19 @@ function fieldsOf(sections: Section[]): Fd[] {
   return sections.flatMap((s) => s.rows.flatMap((r) => r.fields));
 }
 
-/* ── 검증 ────────────────────────────────────────────────────────── */
+/**
+ * 제품군을 바꿀 때 버려야 할 항목 키 — 바뀐 뒤 양식에 없는 항목들.
+ * 3단계는 제품군마다 양식이 통째로 다른데, 화면에서 사라진 board·strike 같은 값이
+ * 그대로 남아 제출 payload 에 실려 나갔다. (linked·lock1 처럼 양쪽에 다 있는 항목은 남는다.)
+ */
+function staleKeys(from: ProductCode, to: ProductCode): string[] {
+  const keep = new Set(fieldsOf(sectionsOf(3, to)).map((f) => f.key));
+  return fieldsOf(sectionsOf(3, from))
+    .map((f) => f.key)
+    .filter((k) => !keep.has(k));
+}
 
-type Vals = Record<string, string>;
+/* ── 검증 ────────────────────────────────────────────────────────── */
 
 /** 항목 정의 → validate() 가 보는 종류 */
 function kindOf(f: Fd): FieldKind {
@@ -421,8 +441,9 @@ function errorOf(f: Fd, v: Vals): string {
   const bad = validateField(f.label, v[f.key] ?? '', {
     kind: kindOf(f),
     required: requiredOf(f, v),
-    min: f.min,
-    max: f.max,
+    // 숫자 범위만 validate() 가 본다 — 날짜 하한은 relationError 쪽에서 따진다
+    min: typeof f.min === 'number' ? f.min : undefined,
+    max: typeof f.max === 'number' ? f.max : undefined,
   });
   return bad || relationError(f.key, v);
 }
@@ -436,44 +457,6 @@ const LINKED: Record<string, string[]> = {
 };
 
 /* ── 임시저장 ────────────────────────────────────────────────────── */
-
-const DRAFT_KEY = 'ti:draft:new';
-
-/** 브라우저에 남겨 두는 작성 중 신청서 */
-interface Draft {
-  v: Vals;
-  step: number;
-  product: ProductCode | '';
-  loc: SiteLoc | null;
-  at: number;
-}
-
-function readDraft(): Draft | null {
-  try {
-    const raw = window.localStorage.getItem(DRAFT_KEY);
-    if (!raw) return null;
-    const d = JSON.parse(raw) as Draft;
-    return d && typeof d === 'object' && d.v ? d : null;
-  } catch {
-    return null;
-  }
-}
-
-function writeDraft(d: Draft): void {
-  try {
-    window.localStorage.setItem(DRAFT_KEY, JSON.stringify(d));
-  } catch {
-    /* 저장 공간이 없거나 차단된 브라우저 — 임시저장만 포기한다 */
-  }
-}
-
-function clearDraft(): void {
-  try {
-    window.localStorage.removeItem(DRAFT_KEY);
-  } catch {
-    /* 위와 같음 */
-  }
-}
 
 /** 초안 저장 시각 'MM.DD HH:MM' */
 function savedAtText(ms: number): string {
@@ -492,6 +475,8 @@ function initialVals(me: MeDTO): Vals {
   init.months = '36';
   init.manager = me.name;
   init.phone = formatPhone(me.phone);
+  // 소속은 '세움테크 · 이관검사 신청자' 처럼 역할이 붙어 온다 — 앞의 회사명만 쓴다
+  init.installer = me.org.split('·')[0].trim();
   return init;
 }
 
@@ -654,6 +639,21 @@ export function NewWizard({ me, draftId }: { me: MeDTO; draftId: string }) {
   }, [sections, values]);
 
   function pick(p: ProductCode) {
+    if (product && product !== p) {
+      const stale = staleKeys(product, p);
+      setValues((v) => {
+        const n = { ...v };
+        stale.forEach((k) => {
+          n[k] = '';
+        });
+        return n;
+      });
+      setErrors((e) => {
+        const n = { ...e };
+        stale.forEach((k) => delete n[k]);
+        return n;
+      });
+    }
     setProduct(p);
     goStep(1);
   }
@@ -688,6 +688,7 @@ export function NewWizard({ me, draftId }: { me: MeDTO; draftId: string }) {
     if (busy || !product) return;
     const v = values;
     const num = (s: string) => Number(String(s).replace(/[^\d.-]/g, '')) || 0;
+    const isDDL = product === 'DDL';
 
     const extra: Record<string, string> = {};
     fieldsOf(sectionsOf(3, product)).forEach((f) => {
@@ -722,19 +723,25 @@ export function NewWizard({ me, draftId }: { me: MeDTO; draftId: string }) {
 
       qty: num(v.qty),
 
-      link: v.link,
-      linked: v.linked,
-      board: v.board,
-      strike: v.strike,
-      other: v.other,
-      lock1: v.lock1,
+      /*
+       * 제품군 전용 항목은 고른 제품군 것만 보낸다.
+       * step0 으로 돌아가 DDL→HN 으로 바꾸면 화면에서는 사라진 DDL 항목이
+       * values 에 그대로 남아 있어, 그대로 실어 보내면 HN 신청 건에
+       * 도어록 값이 붙는다.
+       */
+      link: isDDL ? v.link : '',
+      linked: isDDL ? v.linked : '',
+      board: isDDL ? v.board : '',
+      strike: isDDL ? v.strike : '',
+      other: isDDL ? v.other : '',
+      lock1: isDDL ? v.lock1 : '',
 
-      topology: v.topology,
-      main: v.main,
-      dev1: v.dev1,
-      camera: v.camera,
-      lobby: v.lobby,
-      dongs: num(v.dongs),
+      topology: isDDL ? '' : v.topology,
+      main: isDDL ? '' : v.main,
+      dev1: isDDL ? '' : v.dev1,
+      camera: isDDL ? '' : v.camera,
+      lobby: isDDL ? '' : v.lobby,
+      dongs: isDDL ? 0 : num(v.dongs),
 
       bondNo: v.bondNo,
       issuer: v.issuer,
@@ -867,11 +874,14 @@ export function NewWizard({ me, draftId }: { me: MeDTO; draftId: string }) {
               borderRadius: 5,
             }}
           >
+            {/* 목록에서 "이 내용으로 다시 신청" 을 눌러 온 초안이면 어느 건을 옮겨 왔는지 밝힌다 */}
             <span style={{ font: "500 12.5px/1.4 'Noto Sans KR'", color: '#1a52b6' }}>
-              작성 중이던 신청서가 있습니다
+              {draft.from
+                ? `${draft.from.status} 건 ${draft.from.id} 의 내용을 불러왔습니다`
+                : '작성 중이던 신청서가 있습니다'}
             </span>
             <span style={{ font: "400 11.5px/1.4 'Noto Sans KR'", color: '#6b7480' }}>
-              {savedAtText(draft.at)} 저장
+              {draft.from ? '희망 검사일만 다시 지정하면 됩니다' : `${savedAtText(draft.at)} 저장`}
               {draft.product ? ` · ${draft.product === 'HN' ? 'HN / HA' : 'DDL'}` : ''}
             </span>
             <div style={{ flex: 1 }} />
@@ -890,7 +900,7 @@ export function NewWizard({ me, draftId }: { me: MeDTO; draftId: string }) {
                 cursor: 'pointer',
               }}
             >
-              이어서 작성
+              {draft.from ? '이 내용으로 작성' : '이어서 작성'}
             </motion.button>
             <motion.button
               {...pressable}
@@ -1095,8 +1105,25 @@ export function NewWizard({ me, draftId }: { me: MeDTO; draftId: string }) {
                           }}
                         >
                           <div style={{ display: 'flex', flexDirection: 'column', gap: 7, flex: 1, minWidth: 0 }}>
-                            <span style={{ font: "500 11.5px/1.2 'Noto Sans KR'", color: '#5b6672' }}>
-                              현장 위치 <b style={{ color: '#1f5fd0', fontWeight: 500 }}>*</b>
+                            {/*
+                             * 별표가 붙어 있었지만 단계 검증도 서버도 좌표를 요구하지 않는다
+                             * (좌표 없이 저장된 기존 건이 다수다). 지키지 않는 필수 표시를 지우고
+                             * 대신 지정하면 무엇에 쓰이는지를 밝힌다.
+                             */}
+                            <span
+                              style={{
+                                display: 'flex',
+                                alignItems: 'baseline',
+                                gap: 6,
+                                flexWrap: 'wrap',
+                              }}
+                            >
+                              <span style={{ font: "500 11.5px/1.2 'Noto Sans KR'", color: '#5b6672' }}>
+                                현장 위치
+                              </span>
+                              <span style={{ font: "400 10.5px/1.45 'Noto Sans KR'", color: '#98a1ac' }}>
+                                선택 · 지정하면 주소가 자동 입력되고 감독관이 현장 위치를 확인합니다
+                              </span>
                             </span>
                             <span style={{ font: "400 12.5px/1.5 'Noto Sans KR'", color: locColor }}>
                               {locAddrText}

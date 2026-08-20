@@ -206,7 +206,12 @@ export function ListClient({
   const [shown, setShown] = useState(PAGE);
 
   const [bulkConfirm, setBulkConfirm] = useState(false);
-  const [bulkDate, setBulkDate] = useState(() => fmtInput(parseDot(today())));
+  /*
+   * 기본값을 비워 둔다. 오늘로 채워 두면 날짜를 만지지 않고 누른 순간
+   * 수십 명에게 그 날짜가 확정 통보된다 — 데모 기준일은 일요일이다.
+   * 확정 버튼은 이미 !bulkDate 일 때 비활성이라 빈 값이 안전하게 막힌다.
+   */
+  const [bulkDate, setBulkDate] = useState('');
   const [bulkType, setBulkType] = useState<InspectTypeLabel>('서류검사');
 
   /**
@@ -332,6 +337,8 @@ export function ListClient({
   const allChecked = checkedIds.length > 0 && checkedIds.length === selectable.length;
   /** 이미 잡아 둔 방문예정일을 덮어쓰게 되는 건수 */
   const overwrites = apps.filter((x) => checked[x.id] && x.visitDate).length;
+  /* 서버는 기존 검사종류가 있으면 칩 선택을 무시하고 그대로 둔다 */
+  const keepsType = apps.filter((x) => checked[x.id] && x.inspectType).length;
   useEffect(() => {
     if (!checkedIds.length) setBulkConfirm(false);
   }, [checkedIds.length]);
@@ -1031,6 +1038,23 @@ export function ListClient({
                 신청자 {checkedIds.length}명에게 즉시 통보되며 되돌릴 수 없습니다
               </span>
 
+              {/*
+                방문예정일은 덮어쓰지만 검사종류는 기존 값이 있으면 유지된다
+                (서버 bulkApproveAction). 비대칭이라 적어 두지 않으면
+                칩을 바꿔 놓고 안 바뀐 줄 모른다.
+              */}
+              {keepsType ? (
+                <span
+                  style={{
+                    font: "400 11px/1.4 'Noto Sans KR'",
+                    color: '#5b6672',
+                    wordBreak: 'keep-all',
+                  }}
+                >
+                  검사종류가 이미 정해진 {keepsType}건은 기존 값을 유지합니다
+                </span>
+              ) : null}
+
               {/* 이미 일정이 잡힌 건을 함께 고르면 그 날짜가 사라진다 */}
               {overwrites ? (
                 <span
@@ -1095,7 +1119,6 @@ export function ListClient({
               initial="hidden"
               animate="show"
               exit="exit"
-              style={{ overflowX: 'auto' }}
             >
               <table
                 className="ti-table-sup"

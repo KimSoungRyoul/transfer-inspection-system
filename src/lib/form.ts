@@ -103,7 +103,11 @@ export function validate(
   const { kind = 'text', required = false, min, max } = opts;
   const v = (value ?? '').trim();
 
-  if (!v) return required ? `${josa(label, '을', '를')} 입력해 주세요` : '';
+  if (!v) {
+    if (!required) return '';
+    // 셀렉트는 고르는 것이지 쓰는 것이 아니다 — '발행주체를 입력해 주세요' 는 오해를 부른다
+    return `${josa(label, '을', '를')} ${kind === 'select' ? '선택' : '입력'}해 주세요`;
+  }
 
   switch (kind) {
     case 'date':

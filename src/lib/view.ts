@@ -10,6 +10,7 @@ import {
   RESULT_TO_STATUS,
   STAGE,
   STATUS_STYLE,
+  today,
   type ApplicationDTO,
   type ExternalVisitDTO,
   type ResultLabel,
@@ -416,7 +417,10 @@ export function buildDetail(
     `${a.reqDate} 신청 · ${a.manager}`,
     a.visitDate
       ? `방문예정 ${a.visitDate} ${dowOf(a.visitDate)}요일 · ${a.inspector}`
-      : '감독관 일정 등록 대기',
+      : // 위와 같은 이유 — 다음 차례가 감독관이 아니라 신청자다
+        a.status === '보완요청'
+        ? '보완 후 재신청 필요'
+        : '감독관 일정 등록 대기',
     a.status === '검토예정'
       ? '검토승인 대기'
       : a.visitDate
@@ -425,7 +429,11 @@ export function buildDetail(
     a.first ? `${a.first} · ${a.inspectType || '—'}` : '판정 대기',
     a.final ? `${a.final} · ${a.inspector}` : '판정 대기',
   ];
-  const comments = ['', '', a.revComment, a.firstComment, a.finalComment];
+  /*
+   * 보완요청은 검토 단계(1)에서 걸린다. 검토승인(2) 아래에 붙이면 아직 오지도 않은
+   * 단계에 사유가 달려, 회색으로 죽어 있는 줄을 읽어야 이유를 알 수 있었다.
+   */
+  const comments = ['', a.revComment, '', a.firstComment, a.finalComment];
 
   const stages: StageItem[] = labels.map((label, i) => {
     const done = i < stg;
@@ -532,6 +540,18 @@ export const KPI_DEFS: KpiDef[] = [
     pick: (x) => x.status === '최종판정대기',
     hint: '하자이행증권 · 하자보증기간을 확인한 뒤 최종 합격·불합격을 확정하세요',
   },
+  {
+    /*
+     * 방문일이 지났는데 검토승인에 머물러 있는 건 — 다녀왔지만 판정을 안 넣은 것이다.
+     * 다른 KPI 넷은 '신청완료 / 검토예정 / 이번주 방문 / 최종판정대기' 라
+     * 이 건들은 어디에도 잡히지 않고 조용히 쌓인다.
+     */
+    key: 'overdue',
+    label: '판정 지연 (방문일 경과)',
+    color: '#a32b25',
+    pick: (x) => x.status === '검토승인' && !!x.visitDate && x.visitDate < today(),
+    hint: '방문을 마친 건입니다 · 1차 또는 최종 판정을 입력하세요',
+  },
 ];
 
 /* ── 월 캘린더 ───────────────────────────────────────────────────── */
@@ -542,10 +562,16 @@ export interface CalCell {
   numColor: string;
   more: string;
   visits: { id: string; label: string }[];
+  /** 그날 이미 잡혀 있는 타 신청 건 수 — 겹쳐 잡는 것을 막으려고 표시만 한다 */
+  ext: number;
 }
 
 /** 기준일이 속한 달의 5주(35칸) 그리드 */
-export function calendarCells(apps: ApplicationDTO[], base: string): CalCell[] {
+export function calendarCells(
+  apps: ApplicationDTO[],
+  base: string,
+  external: ExternalVisitDTO[] = [],
+): CalCell[] {
   const b = parseDot(base);
   if (!b) return [];
   const y = b.getUTCFullYear();
@@ -555,6 +581,12 @@ export function calendarCells(apps: ApplicationDTO[], base: string): CalCell[] {
   const lastDay = new Date(Date.UTC(y, m + 1, 0)).getUTCDate();
   const prefix = `${y}.${String(m + 1).padStart(2, '0')}.`;
   const withVisit = apps.filter((x) => x.visitDate.startsWith(prefix));
+  /*
+   * 주간 카드는 외부 일정을 보여 주는데 월 그리드만 숨기고 있었다.
+   * 다음 달 방문일을 잡을 때 이미 차 있는 날이 빈 날로 보여 겹쳐 잡게 된다.
+   * 클릭 대상은 아니므로 건수만 적는다 — 상세는 날짜를 눌러 동선에서 본다.
+   */
+  const withExt = external.filter((x) => x.d.startsWith(prefix));
 
   const cells: CalCell[] = [];
   const total = Math.ceil((firstDow + lastDay) / 7) * 7;
@@ -572,6 +604,7 @@ export function calendarCells(apps: ApplicationDTO[], base: string): CalCell[] {
         id: x.id,
         label: /^\[/.test(x.site) ? x.site : `${x.product === 'DDL' ? '[DDL] ' : '[HN] '}${x.site}`,
       })),
+      ext: inMonth ? withExt.filter((x) => x.d === ds).length : 0,
     });
   }
   return cells;
@@ -633,7 +666,10 @@ export function myVisits(
           : dd === 0
             ? `${it.t} 도착 예정 (오늘)`
             : `${it.t} 도착 예정 · ${it.tEnd} 종료 예정`
-        : '감독관 일정 등록 대기',
+        : // 보완요청은 기다린다고 풀리지 않는다 — 신청자가 재신청해야 일정 등록으로 넘어간다
+          x.status === '보완요청'
+          ? '보완 후 재신청 필요 · 재신청해야 일정이 잡힙니다'
+          : '감독관 일정 등록 대기',
       timeColor: dd !== null && dd < 0 ? '#6b7480' : '#1a52b6',
       dday: dd === null ? '—' : dd === 0 ? '오늘' : dd > 0 ? `D-${dd}` : '완료',
       ddayBg: dd !== null && dd >= 0 ? '#1f5fd0' : '#eef0f3',

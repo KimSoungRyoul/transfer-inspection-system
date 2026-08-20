@@ -280,6 +280,11 @@ export async function requestFixAction(input: unknown): Promise<ActionResult> {
   const text = comment.trim() || '하자이행증권 및 하자보증기간 정보를 보완해 주세요.';
   const app = await prisma.application.findUnique({ where: { id } });
   if (!app) return fail('신청 건을 찾을 수 없습니다');
+  // 판정이 끝난 건을 되돌리면 신청자에게 통보까지 나간다.
+  // 화면이 오래된 상태(드로어를 열어 둔 사이 다른 곳에서 확정)에서 도달할 수 있다.
+  if (CLOSED.includes(app.status)) {
+    return fail('판정이 확정된 신청 건은 보완요청으로 되돌릴 수 없습니다');
+  }
 
   await prisma.application.update({
     where: { id },
@@ -309,6 +314,9 @@ const RESULT_VALUES = ['합격', '조건부합격', '불합격', '보류', '이�
 const APPROVABLE: StatusEnum[] = ['SUBMITTED', 'FIX_REQUESTED', 'REVIEW_PLANNED'];
 /** 판정을 넣을 수 있는 상태 */
 const JUDGEABLE: StatusEnum[] = ['REVIEW_APPROVED', 'FINAL_PENDING'];
+
+/** 판정이 끝나 더는 되돌릴 수 없는 상태 */
+const CLOSED: StatusEnum[] = ['PASSED', 'CONDITIONAL', 'FAILED', 'HOLD', 'CARRIED_OVER'];
 
 /**
  * 하자이행증권이 확인되지 않은 건인지.
@@ -448,8 +456,10 @@ export async function bulkApproveAction(input: unknown): Promise<ActionResult> {
   if (!parsed.success) return fail(parsed.error.errors[0].message);
   const { ids, inspectType } = parsed.data;
 
-  const visitDate = parsed.data.visitDate || today();
-  const d = parseDot(visitDate);
+  // 비면 오늘로 채우던 것을 막는다 — 데모 기준일이 일요일이라
+  // 날짜를 만지지 않고 누르면 수십 명에게 일요일 방문이 확정 발송됐다.
+  const visitDate = parsed.data.visitDate;
+  const d = visitDate ? parseDot(visitDate) : null;
   if (!d) return fail('방문예정일을 선택해 주세요');
   const dot = visitDate.replace(/-/g, '.');
 
@@ -481,7 +491,10 @@ export async function bulkApproveAction(input: unknown): Promise<ActionResult> {
             ],
           },
           notifications: {
-            create: [notifyEntry('MAIL', `검토승인 · 방문예정일 ${dot}`)],
+            create: [
+              notifyEntry('MAIL', `검토승인 · 방문예정일 ${dot}`),
+              notifyEntry('SMS', `검토승인 · 방문예정일 ${dot}`),
+            ],
           },
         },
       }),
@@ -665,6 +678,17 @@ export async function resubmitAction(id: string): Promise<ActionResult> {
     data: {
       status: 'SUBMITTED',
       reqDate: parseDot(today())!,
+      /*
+       * 지난 라운드의 판정 흔적을 지운다. 남겨 두면 재승인 뒤 판정 화면에
+       * 옛 1차 판정(예: 조건부합격)이 미리 선택된 채로 열려, 이번 방문 결과
+       * 대신 그것을 그대로 확정할 위험이 있다. 이력은 logs 에 남아 있다.
+       */
+      visitDate: null,
+      inspectType: null,
+      firstResult: null,
+      finalResult: null,
+      firstComment: '',
+      finalComment: '',
       logs: { create: [logEntry(me.name, '보완 내용 반영 후 재신청')] },
       notifications: {
         create: [notifyEntry('MAIL', '보완 내용이 반영되어 재신청되었습니다 · 감독관 검토 대기')],

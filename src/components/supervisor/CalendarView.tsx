@@ -64,7 +64,7 @@ export function CalendarView({
   /* 하루치 방문 동선 패널 — 열려 있는 날짜 */
   const [day, setDay] = useState<string | null>(null);
 
-  const cells = calendarCells(apps, month);
+  const cells = calendarCells(apps, month, external);
   const b = parseDot(month);
   const prefix = b ? `${b.getUTCFullYear()}.${String(b.getUTCMonth() + 1).padStart(2, '0')}.` : '';
 
@@ -214,6 +214,29 @@ export function CalendarView({
                     {v.label}
                   </motion.button>
                 ))}
+
+                {/* 타 신청 건 — 누를 수 없고, 그날이 이미 찼다는 것만 알린다 */}
+                {c.ext ? (
+                  <span
+                    title="타 신청 건 방문 일정"
+                    style={{
+                      display: 'block',
+                      maxWidth: '100%',
+                      flex: 'none',
+                      padding: '3px 6px',
+                      border: '1px solid #e4e8ec',
+                      background: '#f2f4f7',
+                      borderRadius: 3,
+                      font: "400 10px/1.35 'Noto Sans KR'",
+                      color: '#77808c',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    타 신청 {c.ext}건
+                  </span>
+                ) : null}
 
                 {c.more ? (
                   <button

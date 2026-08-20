@@ -9,6 +9,7 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 
 import { listApplications } from '@/lib/data';
+import { today } from '@/lib/domain';
 import { readSession } from '@/lib/session';
 import { isJudgeable } from '@/lib/view';
 import { KpiRowCells, kpiRowStyle } from '@/components/supervisor/KpiModal';
@@ -31,6 +32,14 @@ export default async function JudgeEntryPage() {
   });
 
   const visited = list.filter((x) => x.status === '최종판정대기').length;
+  /*
+   * 검토승인인데 방문일이 지난 건 = 다녀왔지만 판정을 안 넣은 것.
+   * 이걸 '방문 예정' 으로 세면 한 달 지난 건이 앞으로 갈 일정처럼 보인다.
+   */
+  const overdue = list.filter(
+    (x) => x.status === '검토승인' && !!x.visitDate && x.visitDate < today(),
+  ).length;
+  const upcoming = list.length - visited - overdue;
 
   return (
     <div
@@ -100,7 +109,8 @@ export default async function JudgeEntryPage() {
             className="ti-cardnote"
             style={{ font: "400 11px/1.2 'Noto Sans KR'", color: '#8b95a1' }}
           >
-            방문 후 최종판정 대기 {visited}건 · 방문 예정(검토승인) {list.length - visited}건
+            방문 후 최종판정 대기 {visited}건
+            {overdue ? ` · 방문일 경과 ${overdue}건` : ''} · 방문 예정 {upcoming}건
           </span>
         </div>
 
